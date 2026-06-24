@@ -147,6 +147,28 @@ http://127.0.0.1:8000/
 
 The built React app is served by FastAPI, so the installed dashboard runs as one Python process plus the PostgreSQL Docker container.
 
+### Changing the POS source folder
+
+From the installed dashboard directory:
+
+```powershell
+.\set-pos-source.ps1 "C:\Path\To\ParadoxFolder"
+```
+
+The helper updates both `install-config.json` and `backend\.env`, so future updates preserve the new folder. It also restarts the scheduled task by default.
+
+Use an ODBC DSN when needed:
+
+```powershell
+.\set-pos-source.ps1 "C:\Path\To\ParadoxFolder" -OdbcDsn "FirestecParadox"
+```
+
+If you only want to update config without restarting:
+
+```powershell
+.\set-pos-source.ps1 "C:\Path\To\ParadoxFolder" -NoRestart
+```
+
 ### Updating
 
 After installation, update to the newest GitHub Release from the install directory:

@@ -287,7 +287,7 @@ function Copy-PackageIntoInstall {
     $BackupDir = Join-Path $InstallDir ("backup-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
-    foreach ($Name in @("backend", "frontend", "runtime", "install-windows.ps1", "run-dashboard.ps1", "update-windows.ps1", "PACKAGE.txt")) {
+    foreach ($Name in @("backend", "frontend", "runtime", "install-windows.ps1", "run-dashboard.ps1", "update-windows.ps1", "set-pos-source.ps1", "PACKAGE.txt")) {
         $CurrentPath = Join-Path $InstallDir $Name
         if (Test-Path $CurrentPath) {
             Move-Item -Force $CurrentPath (Join-Path $BackupDir $Name)
@@ -297,7 +297,7 @@ function Copy-PackageIntoInstall {
     foreach ($Name in @("backend", "frontend", "runtime")) {
         Copy-Item -Path (Join-Path $PackageRoot $Name) -Destination $InstallDir -Recurse -Force
     }
-    foreach ($Name in @("install-windows.ps1", "run-dashboard.ps1", "update-windows.ps1", "PACKAGE.txt")) {
+    foreach ($Name in @("install-windows.ps1", "run-dashboard.ps1", "update-windows.ps1", "set-pos-source.ps1", "PACKAGE.txt")) {
         $SourcePath = Join-Path $PackageRoot $Name
         if (Test-Path $SourcePath) {
             Copy-Item -Force $SourcePath (Join-Path $InstallDir $Name)
