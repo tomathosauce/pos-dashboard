@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pos_dashboard
+      POSTGRES_USER: pos_dashboard
+      POSTGRES_PASSWORD: pos_dashboard
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos_dashboard -d pos_dashboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://pos_dashboard:pos_dashboard@db:5432/pos_dashboard}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-false}
+      DAILY_SYNC_HOUR: ${DAILY_SYNC_HOUR:-8}
+      DAILY_SYNC_MINUTE: ${DAILY_SYNC_MINUTE:-0}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-America/Bogota}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-USD}
+      POS_SOURCES_JSON: ${POS_SOURCES_JSON:-[{"name":"main","path":"/pos-source","reader":"pxlib","timezone":"America/Bogota","currency":"USD","odbc_connection_string":null,"odbc_dsn":null}]}
+    volumes:
+      - ..:/pos-source:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:

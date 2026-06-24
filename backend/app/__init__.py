@@ -1,0 +1,2 @@
+"""Daily POS dashboard backend."""
+
