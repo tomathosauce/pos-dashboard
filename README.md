@@ -146,3 +146,40 @@ http://127.0.0.1:8000/
 ```
 
 The built React app is served by FastAPI, so the installed dashboard runs as one Python process plus the PostgreSQL Docker container.
+
+### Updating
+
+After installation, update to the newest GitHub Release from the install directory:
+
+```powershell
+$env:GITHUB_TOKEN = "github_pat_..."
+.\update-windows.ps1
+```
+
+Or run the latest updater script directly from GitHub:
+
+```powershell
+$env:GITHUB_TOKEN = "github_pat_..."
+$env:POS_DASHBOARD_REPO = "your-org/your-private-repo"
+$env:POS_DASHBOARD_INSTALL_DIR = "C:\Path\To\Installed\Dashboard"
+
+irm `
+  -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
+  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/pos-dashboard/scripts/update-windows.ps1" `
+  | iex
+```
+
+To update from a specific release tag:
+
+```powershell
+.\update-windows.ps1 -ReleaseTag "v0.2.0"
+```
+
+To update from a specific branch or commit ref, the ref must contain a prebuilt package layout with `runtime/python-x86/` and `frontend/dist/`:
+
+```powershell
+.\update-windows.ps1 -Ref "main"
+.\update-windows.ps1 -Ref "abc1234"
+```
+
+Release updates are the recommended path because release assets contain the built React frontend and bundled 32-bit Python runtime.

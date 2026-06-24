@@ -345,6 +345,16 @@ try {
     [ordered]@{
         host = "0.0.0.0"
         port = $Port
+        repoOwner = $RepoOwner
+        repoName = $RepoName
+        releaseTag = $ReleaseTag
+        assetName = $AssetName
+        posSourcePath = $PosSourcePath
+        sourceName = $SourceName
+        reader = $Reader
+        odbcDsn = $OdbcDsn
+        odbcConnectionString = $OdbcConnectionString
+        taskName = $TaskName
         postgresContainerName = $PostgresContainerName
         postgresVolumeName = $PostgresVolumeName
         postgresPort = $PostgresPort

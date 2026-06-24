@@ -171,6 +171,7 @@ Invoke-Native $PythonExe -c "import struct, pyodbc, fastapi, sqlalchemy, pg8000,
 
 Copy-Item -Force (Join-Path $ScriptsDir "install-windows.ps1") (Join-Path $StageDir "install-windows.ps1")
 Copy-Item -Force (Join-Path $ScriptsDir "run-dashboard.ps1") (Join-Path $StageDir "run-dashboard.ps1")
+Copy-Item -Force (Join-Path $ScriptsDir "update-windows.ps1") (Join-Path $StageDir "update-windows.ps1")
 
 Set-Content -Path (Join-Path $StageDir "PACKAGE.txt") -Encoding ASCII -Value @(
     "Daily POS Dashboard Windows x86 package",
