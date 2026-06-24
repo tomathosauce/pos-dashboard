@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     daily_sync_minute: int = 0
     default_timezone: str = "America/Bogota"
     default_currency: str = "USD"
+    frontend_dist_dir: str | None = None
     pos_sources_json: str = Field(default_factory=lambda: json.dumps([{
         "name": "main",
         "path": _default_source_path(),

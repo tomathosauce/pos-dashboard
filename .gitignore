@@ -7,5 +7,7 @@ __pycache__/
 .venv/
 node_modules/
 dist/
+release/
+.package/
+runtime/
 .DS_Store
-

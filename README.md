@@ -74,3 +74,75 @@ Example pxlib source:
 ```
 
 The pxlib reader scans `tdocumentos_formas.DB` and filters by `FECHA` in Python. It is convenient, but ODBC remains the safer live POS option.
+
+## Windows x86 Runtime Package
+
+Live Paradox/BDE deployments often require a 32-bit process because the Paradox ODBC/BDE driver is only installed as 32-bit. For that setup, do not install normal system Python. Build and publish a self-contained x86 release package instead.
+
+The release package contains:
+
+- `backend/`
+- prebuilt `frontend/dist/`
+- a private Python 3.11 32-bit embeddable runtime under `runtime/python-x86/`
+- Windows x86 Python dependencies, including `pyodbc` and `pg8000`
+- `install-windows.ps1` and `run-dashboard.ps1`
+
+Build the package on a maintainer Windows machine with Node/npm available:
+
+```powershell
+cd pos-dashboard
+.\scripts\build-windows-x86-package.ps1
+```
+
+Upload `release\pos-dashboard-windows-x86.zip` to a private GitHub Release. The store/backoffice machine only needs Docker Desktop and the 32-bit Paradox ODBC/BDE driver installed; it does not need Node, npm, or system Python.
+
+Fast target-machine install from the directory where the app should be installed:
+
+```powershell
+$env:GITHUB_TOKEN = "github_pat_..."
+$env:POS_DASHBOARD_REPO = "your-org/your-private-repo"
+
+irm `
+  -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
+  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/pos-dashboard/scripts/install-windows.ps1" `
+  | iex
+```
+
+By default, the installer uses the current directory as both:
+
+- the install directory
+- the POS source folder
+
+Override those when needed:
+
+```powershell
+$env:GITHUB_TOKEN = "github_pat_..."
+$env:POS_DASHBOARD_REPO = "your-org/your-private-repo"
+$env:POS_DASHBOARD_INSTALL_DIR = "C:\POSDashboard"
+$env:POS_DASHBOARD_SOURCE_PATH = "C:\Path\To\Firestec"
+
+irm `
+  -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
+  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/pos-dashboard/scripts/install-windows.ps1" `
+  | iex
+```
+
+Avoid putting the PAT in the URL itself. Passing it through the `Authorization` header keeps it out of command history and most logs.
+
+The installer:
+
+- downloads the private GitHub Release asset with the PAT without writing the token to disk
+- extracts the self-contained app into the current directory unless `POS_DASHBOARD_INSTALL_DIR` or `-InstallDir` is provided
+- creates or reuses a localhost-only `pos-dashboard-postgres` Docker container
+- writes backend `.env` with `DATABASE_URL=postgresql+pg8000://...`
+- validates the bundled Python runtime is 32-bit
+- runs Alembic migrations
+- registers a current-user Task Scheduler logon task
+
+Installed dashboard URL:
+
+```text
+http://127.0.0.1:8000/
+```
+
+The built React app is served by FastAPI, so the installed dashboard runs as one Python process plus the PostgreSQL Docker container.

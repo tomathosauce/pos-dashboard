@@ -1,0 +1,377 @@
+[CmdletBinding()]
+param(
+    [string]$Repo = $env:POS_DASHBOARD_REPO,
+    [string]$RepoOwner = $env:POS_DASHBOARD_REPO_OWNER,
+    [string]$RepoName = $env:POS_DASHBOARD_REPO_NAME,
+    [string]$ReleaseTag = $env:POS_DASHBOARD_RELEASE_TAG,
+    [string]$AssetName = $env:POS_DASHBOARD_ASSET_NAME,
+    [string]$PackagePath,
+    [string]$InstallDir = $env:POS_DASHBOARD_INSTALL_DIR,
+    [string]$GitHubToken = $env:GITHUB_TOKEN,
+    [string]$PosSourcePath = $env:POS_DASHBOARD_SOURCE_PATH,
+    [string]$SourceName = $env:POS_DASHBOARD_SOURCE_NAME,
+    [ValidateSet("odbc")][string]$Reader = "odbc",
+    [string]$OdbcDsn = $env:POS_DASHBOARD_ODBC_DSN,
+    [string]$OdbcConnectionString = $env:POS_DASHBOARD_ODBC_CONNECTION_STRING,
+    [int]$Port = $(if ($env:POS_DASHBOARD_PORT) { [int]$env:POS_DASHBOARD_PORT } else { 8000 }),
+    [string]$TaskName = $(if ($env:POS_DASHBOARD_TASK_NAME) { $env:POS_DASHBOARD_TASK_NAME } else { "POS Dashboard" }),
+    [string]$PostgresContainerName = $(if ($env:POS_DASHBOARD_POSTGRES_CONTAINER) { $env:POS_DASHBOARD_POSTGRES_CONTAINER } else { "pos-dashboard-postgres" }),
+    [string]$PostgresVolumeName = $(if ($env:POS_DASHBOARD_POSTGRES_VOLUME) { $env:POS_DASHBOARD_POSTGRES_VOLUME } else { "pos-dashboard-postgres-data" }),
+    [int]$PostgresPort = $(if ($env:POS_DASHBOARD_POSTGRES_PORT) { [int]$env:POS_DASHBOARD_POSTGRES_PORT } else { 5432 }),
+    [string]$PostgresPassword,
+    [switch]$SkipTask
+)
+
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+function Write-Step {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    Write-Host ""
+    Write-Host "==> $Message"
+}
+
+function Assert-Command {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Required command not found: $Name"
+    }
+}
+
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments
+    )
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FilePath failed with exit code $LASTEXITCODE."
+    }
+}
+
+function New-LocalPassword {
+    $Chars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789".ToCharArray()
+    -join (1..32 | ForEach-Object { $Chars | Get-Random })
+}
+
+function Resolve-InstallDefaults {
+    $CurrentDirectory = (Get-Location).Path
+
+    if (-not $ReleaseTag) {
+        $script:ReleaseTag = "latest"
+    }
+    if (-not $AssetName) {
+        $script:AssetName = "pos-dashboard-windows-x86.zip"
+    }
+    if (-not $InstallDir) {
+        $script:InstallDir = $CurrentDirectory
+    }
+    if (-not $PosSourcePath) {
+        $script:PosSourcePath = $CurrentDirectory
+    }
+    if (-not $SourceName) {
+        $script:SourceName = "main"
+    }
+
+    if ($Repo -and (-not $RepoOwner -or -not $RepoName)) {
+        $RepoParts = $Repo.Trim().Trim("/") -split "/"
+        if ($RepoParts.Count -ne 2 -or -not $RepoParts[0] -or -not $RepoParts[1]) {
+            throw "POS_DASHBOARD_REPO or -Repo must be in owner/repo format."
+        }
+        $script:RepoOwner = $RepoParts[0]
+        $script:RepoName = $RepoParts[1]
+    }
+
+    if (-not $PackagePath -and (-not $RepoOwner -or -not $RepoName)) {
+        throw "Set -Repo owner/repo, -RepoOwner/-RepoName, or POS_DASHBOARD_REPO before running the installer."
+    }
+}
+
+function Get-PrivateGitHubToken {
+    if ($GitHubToken) {
+        return $GitHubToken
+    }
+    $SecureToken = Read-Host "GitHub personal access token" -AsSecureString
+    $Ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureToken)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Ptr)
+    }
+}
+
+function Download-ReleaseAsset {
+    param(
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    $Token = Get-PrivateGitHubToken
+    $Headers = @{
+        Authorization = "Bearer $Token"
+        Accept = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
+        "User-Agent" = "pos-dashboard-installer"
+    }
+
+    if ($ReleaseTag -eq "latest") {
+        $ReleaseUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
+    }
+    else {
+        $ReleaseUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$ReleaseTag"
+    }
+
+    Write-Step "Downloading release metadata from GitHub"
+    $Release = Invoke-RestMethod -Uri $ReleaseUrl -Headers $Headers
+    $Asset = $Release.assets | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
+    if (-not $Asset) {
+        throw "Release asset not found: $AssetName"
+    }
+
+    $DownloadHeaders = @{
+        Authorization = "Bearer $Token"
+        Accept = "application/octet-stream"
+        "X-GitHub-Api-Version" = "2022-11-28"
+        "User-Agent" = "pos-dashboard-installer"
+    }
+    Invoke-WebRequest -Uri $Asset.url -Headers $DownloadHeaders -OutFile $Destination
+}
+
+function Start-DockerDesktopIfNeeded {
+    if (docker info *> $null) {
+        return
+    }
+
+    $DockerDesktop = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+    if (Test-Path $DockerDesktop) {
+        Write-Step "Starting Docker Desktop"
+        Start-Process -FilePath $DockerDesktop | Out-Null
+    }
+
+    $Deadline = (Get-Date).AddSeconds(180)
+    do {
+        Start-Sleep -Seconds 3
+        if (docker info *> $null) {
+            return
+        }
+    } while ((Get-Date) -lt $Deadline)
+
+    throw "Docker Desktop is not running. Install/start Docker Desktop, then rerun this installer."
+}
+
+function Get-ExistingContainerPassword {
+    param([Parameter(Mandatory = $true)][string]$ContainerName)
+
+    $Exists = docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $ContainerName }
+    if (-not $Exists) {
+        return $null
+    }
+
+    $EnvLines = docker inspect --format "{{range .Config.Env}}{{println .}}{{end}}" $ContainerName
+    $PasswordLine = $EnvLines | Where-Object { $_ -like "POSTGRES_PASSWORD=*" } | Select-Object -First 1
+    if ($PasswordLine) {
+        return $PasswordLine.Substring("POSTGRES_PASSWORD=".Length)
+    }
+    return $null
+}
+
+function Ensure-PostgresContainer {
+    Start-DockerDesktopIfNeeded
+
+    $Exists = docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $PostgresContainerName }
+    if ($Exists) {
+        $Running = docker ps --format "{{.Names}}" | Where-Object { $_ -eq $PostgresContainerName }
+        if (-not $Running) {
+            Write-Step "Starting existing PostgreSQL container"
+            Invoke-Native docker start $PostgresContainerName
+        }
+    }
+    else {
+        Write-Step "Creating PostgreSQL container"
+        Invoke-Native docker run -d `
+            --name $PostgresContainerName `
+            -e POSTGRES_DB=pos_dashboard `
+            -e POSTGRES_USER=pos_dashboard `
+            -e POSTGRES_PASSWORD=$PostgresPassword `
+            -p "127.0.0.1:$PostgresPort`:5432" `
+            -v "$PostgresVolumeName`:/var/lib/postgresql/data" `
+            postgres:16-alpine
+    }
+
+    $Deadline = (Get-Date).AddSeconds(120)
+    do {
+        Start-Sleep -Seconds 2
+        docker exec $PostgresContainerName pg_isready -U pos_dashboard -d pos_dashboard *> $null
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+    } while ((Get-Date) -lt $Deadline)
+
+    throw "PostgreSQL container did not become ready: $PostgresContainerName"
+}
+
+function Write-BackendEnv {
+    param(
+        [Parameter(Mandatory = $true)][string]$BackendDir,
+        [Parameter(Mandatory = $true)][string]$FrontendDistDir
+    )
+
+    $EscapedPassword = [Uri]::EscapeDataString($PostgresPassword)
+    $DatabaseUrl = "postgresql+pg8000://pos_dashboard:$EscapedPassword@127.0.0.1:$PostgresPort/pos_dashboard"
+
+    $Source = [ordered]@{
+        name = $SourceName
+        path = $PosSourcePath
+        reader = $Reader
+        timezone = "America/Bogota"
+        currency = "USD"
+        odbc_connection_string = if ($OdbcConnectionString) { $OdbcConnectionString } else { $null }
+        odbc_dsn = if ($OdbcDsn) { $OdbcDsn } else { $null }
+    }
+    $PosSourcesJson = @($Source) | ConvertTo-Json -Compress
+
+    $EnvPath = Join-Path $BackendDir ".env"
+    Set-Content -Path $EnvPath -Encoding UTF8 -Value @(
+        "DATABASE_URL=$DatabaseUrl",
+        "API_CORS_ORIGINS=http://localhost:$Port,http://127.0.0.1:$Port",
+        "ENABLE_SCHEDULER=true",
+        "DAILY_SYNC_HOUR=8",
+        "DAILY_SYNC_MINUTE=0",
+        "DEFAULT_TIMEZONE=America/Bogota",
+        "DEFAULT_CURRENCY=USD",
+        "FRONTEND_DIST_DIR=$FrontendDistDir",
+        "POS_SOURCES_JSON=$PosSourcesJson"
+    )
+}
+
+function Register-DashboardTask {
+    param([Parameter(Mandatory = $true)][string]$RunScript)
+
+    Write-Step "Registering Task Scheduler autostart"
+    $Action = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$RunScript`""
+    $Trigger = New-ScheduledTaskTrigger -AtLogOn
+    $Trigger.Delay = "PT30S"
+    $Principal = New-ScheduledTaskPrincipal `
+        -UserId "$env:USERDOMAIN\$env:USERNAME" `
+        -LogonType Interactive `
+        -RunLevel LeastPrivilege
+    $Settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Days 0)
+
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Action $Action `
+        -Trigger $Trigger `
+        -Principal $Principal `
+        -Settings $Settings `
+        -Force | Out-Null
+}
+
+Resolve-InstallDefaults
+Assert-Command docker
+
+if (-not (Test-Path $PosSourcePath)) {
+    throw "POS source path does not exist: $PosSourcePath"
+}
+
+$InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
+$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pos-dashboard-install-" + [Guid]::NewGuid().ToString("N"))
+$PackageZip = Join-Path $TempDir $AssetName
+$ExtractDir = Join-Path $TempDir "package"
+New-Item -ItemType Directory -Force -Path $TempDir, $ExtractDir | Out-Null
+
+try {
+    if ($PackagePath) {
+        Write-Step "Using local package $PackagePath"
+        Copy-Item -Force $PackagePath $PackageZip
+    }
+    else {
+        Download-ReleaseAsset -Destination $PackageZip
+    }
+
+    Write-Step "Extracting package"
+    Expand-Archive -Path $PackageZip -DestinationPath $ExtractDir -Force
+
+    Write-Step "Installing files to $InstallDir"
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    foreach ($Name in @("backend", "frontend", "runtime")) {
+        $TargetPath = Join-Path $InstallDir $Name
+        if (Test-Path $TargetPath) {
+            Remove-Item -Recurse -Force $TargetPath
+        }
+    }
+    Copy-Item -Path (Join-Path $ExtractDir "*") -Destination $InstallDir -Recurse -Force
+
+    $BundledPython = Join-Path $InstallDir "runtime\python-x86\python.exe"
+    if (-not (Test-Path $BundledPython)) {
+        throw "Package is missing bundled Python: $BundledPython"
+    }
+    & $BundledPython -c "import struct; raise SystemExit(0 if struct.calcsize('P') * 8 == 32 else 1)"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Bundled Python is not 32-bit."
+    }
+
+    if (-not $PostgresPassword) {
+        $ExistingConfigPath = Join-Path $InstallDir "install-config.json"
+        if (Test-Path $ExistingConfigPath) {
+            $ExistingConfig = Get-Content -Raw -Path $ExistingConfigPath | ConvertFrom-Json
+            $PasswordProperty = $ExistingConfig.PSObject.Properties["postgresPassword"]
+            if ($PasswordProperty -and $PasswordProperty.Value) {
+                $PostgresPassword = [string]$PasswordProperty.Value
+            }
+        }
+    }
+    if (-not $PostgresPassword) {
+        $ExistingPassword = Get-ExistingContainerPassword -ContainerName $PostgresContainerName
+        if ($ExistingPassword) {
+            $PostgresPassword = $ExistingPassword
+        }
+    }
+    if (-not $PostgresPassword) {
+        $PostgresPassword = New-LocalPassword
+    }
+
+    Ensure-PostgresContainer
+
+    $BackendDir = Join-Path $InstallDir "backend"
+    $FrontendDistDir = Join-Path $InstallDir "frontend\dist"
+    Write-BackendEnv -BackendDir $BackendDir -FrontendDistDir $FrontendDistDir
+
+    $InstallConfigPath = Join-Path $InstallDir "install-config.json"
+    [ordered]@{
+        host = "0.0.0.0"
+        port = $Port
+        postgresContainerName = $PostgresContainerName
+        postgresVolumeName = $PostgresVolumeName
+        postgresPort = $PostgresPort
+        postgresPassword = $PostgresPassword
+        installedAt = (Get-Date).ToString("o")
+    } | ConvertTo-Json | Set-Content -Path $InstallConfigPath -Encoding UTF8
+
+    Write-Step "Running migrations"
+    Push-Location $BackendDir
+    try {
+        Invoke-Native $BundledPython -m alembic upgrade head
+    }
+    finally {
+        Pop-Location
+    }
+
+    $RunScript = Join-Path $InstallDir "run-dashboard.ps1"
+    if (-not $SkipTask) {
+        Register-DashboardTask -RunScript $RunScript
+    }
+
+    Write-Step "Install complete"
+    Write-Host "Dashboard URL: http://127.0.0.1:$Port/"
+    Write-Host "Run manually: powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$RunScript`""
+}
+finally {
+    if (Test-Path $TempDir) {
+        Remove-Item -Recurse -Force $TempDir
+    }
+}
