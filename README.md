@@ -85,7 +85,7 @@ The release package contains:
 - prebuilt `frontend/dist/`
 - a private Python 3.11 32-bit embeddable runtime under `runtime/python-x86/`
 - Windows x86 Python dependencies, including `pyodbc` and `pg8000`
-- `install-windows.ps1` and `run-dashboard.ps1`
+- `install-windows.ps1`, `update-windows.ps1`, `set-pos-source.ps1`, and `run-dashboard.ps1`
 
 Build the package on a maintainer Windows machine with Node/npm available:
 
@@ -94,17 +94,25 @@ cd pos-dashboard
 .\scripts\build-windows-x86-package.ps1
 ```
 
-Upload `release\pos-dashboard-windows-x86.zip` to a private GitHub Release. The store/backoffice machine only needs Docker Desktop and the 32-bit Paradox ODBC/BDE driver installed; it does not need Node, npm, or system Python.
+Upload `release\pos-dashboard-windows-x86.zip` to a GitHub Release. The store/backoffice machine only needs Docker Desktop and the 32-bit Paradox ODBC/BDE driver installed; it does not need Node, npm, or system Python.
 
 Fast target-machine install from the directory where the app should be installed:
 
 ```powershell
+$env:POS_DASHBOARD_REPO = "your-org/pos-dashboard"
+
+irm "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/scripts/install-windows.ps1" | iex
+```
+
+For a private repo, provide a token only for that session:
+
+```powershell
 $env:GITHUB_TOKEN = "github_pat_..."
-$env:POS_DASHBOARD_REPO = "your-org/your-private-repo"
+$env:POS_DASHBOARD_REPO = "your-org/pos-dashboard"
 
 irm `
   -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
-  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/pos-dashboard/scripts/install-windows.ps1" `
+  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/scripts/install-windows.ps1" `
   | iex
 ```
 
@@ -116,22 +124,18 @@ By default, the installer uses the current directory as both:
 Override those when needed:
 
 ```powershell
-$env:GITHUB_TOKEN = "github_pat_..."
-$env:POS_DASHBOARD_REPO = "your-org/your-private-repo"
+$env:POS_DASHBOARD_REPO = "your-org/pos-dashboard"
 $env:POS_DASHBOARD_INSTALL_DIR = "C:\POSDashboard"
 $env:POS_DASHBOARD_SOURCE_PATH = "C:\Path\To\Firestec"
 
-irm `
-  -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
-  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/pos-dashboard/scripts/install-windows.ps1" `
-  | iex
+irm "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/scripts/install-windows.ps1" | iex
 ```
 
-Avoid putting the PAT in the URL itself. Passing it through the `Authorization` header keeps it out of command history and most logs.
+Avoid putting a PAT in the URL itself when using a private repo. Passing it through the `Authorization` header keeps it out of command history and most logs.
 
 The installer:
 
-- downloads the private GitHub Release asset with the PAT without writing the token to disk
+- downloads the GitHub Release asset, using `GITHUB_TOKEN` only if one is provided
 - extracts the self-contained app into the current directory unless `POS_DASHBOARD_INSTALL_DIR` or `-InstallDir` is provided
 - creates or reuses a localhost-only `pos-dashboard-postgres` Docker container
 - writes backend `.env` with `DATABASE_URL=postgresql+pg8000://...`
@@ -174,20 +178,27 @@ If you only want to update config without restarting:
 After installation, update to the newest GitHub Release from the install directory:
 
 ```powershell
-$env:GITHUB_TOKEN = "github_pat_..."
 .\update-windows.ps1
 ```
 
 Or run the latest updater script directly from GitHub:
 
 ```powershell
-$env:GITHUB_TOKEN = "github_pat_..."
-$env:POS_DASHBOARD_REPO = "your-org/your-private-repo"
+$env:POS_DASHBOARD_REPO = "your-org/pos-dashboard"
 $env:POS_DASHBOARD_INSTALL_DIR = "C:\Path\To\Installed\Dashboard"
+
+irm "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/scripts/update-windows.ps1" | iex
+```
+
+For private update downloads, set `GITHUB_TOKEN` and pass the same header used by the installer:
+
+```powershell
+$env:GITHUB_TOKEN = "github_pat_..."
+$env:POS_DASHBOARD_REPO = "your-org/pos-dashboard"
 
 irm `
   -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
-  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/pos-dashboard/scripts/update-windows.ps1" `
+  "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/scripts/update-windows.ps1" `
   | iex
 ```
 

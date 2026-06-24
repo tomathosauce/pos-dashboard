@@ -39,18 +39,18 @@ function Get-ScriptDirectory {
     return $null
 }
 
-function Get-PrivateGitHubToken {
+function New-GitHubHeaders {
+    param([Parameter(Mandatory = $true)][string]$Accept)
+
+    $Headers = @{
+        Accept = $Accept
+        "X-GitHub-Api-Version" = "2022-11-28"
+        "User-Agent" = "pos-dashboard-updater"
+    }
     if ($GitHubToken) {
-        return $GitHubToken
+        $Headers["Authorization"] = "Bearer $GitHubToken"
     }
-    $SecureToken = Read-Host "GitHub personal access token" -AsSecureString
-    $Ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureToken)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
-    }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Ptr)
-    }
+    return $Headers
 }
 
 function Get-ConfigValue {
@@ -115,13 +115,7 @@ function Resolve-UpdateDefaults {
 function Download-ReleaseAsset {
     param([Parameter(Mandatory = $true)][string]$Destination)
 
-    $Token = Get-PrivateGitHubToken
-    $Headers = @{
-        Authorization = "Bearer $Token"
-        Accept = "application/vnd.github+json"
-        "X-GitHub-Api-Version" = "2022-11-28"
-        "User-Agent" = "pos-dashboard-updater"
-    }
+    $Headers = New-GitHubHeaders -Accept "application/vnd.github+json"
 
     if ($ReleaseTag -eq "latest") {
         $ReleaseUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
@@ -137,13 +131,13 @@ function Download-ReleaseAsset {
         throw "Release asset not found: $AssetName"
     }
 
-    $DownloadHeaders = @{
-        Authorization = "Bearer $Token"
-        Accept = "application/octet-stream"
-        "X-GitHub-Api-Version" = "2022-11-28"
-        "User-Agent" = "pos-dashboard-updater"
+    $DownloadHeaders = New-GitHubHeaders -Accept "application/octet-stream"
+    if ($GitHubToken) {
+        Invoke-WebRequest -Uri $Asset.url -Headers $DownloadHeaders -OutFile $Destination
     }
-    Invoke-WebRequest -Uri $Asset.url -Headers $DownloadHeaders -OutFile $Destination
+    else {
+        Invoke-WebRequest -Uri $Asset.browser_download_url -Headers $DownloadHeaders -OutFile $Destination
+    }
     $script:UpdatedFrom = if ($Release.tag_name) { "release:$($Release.tag_name)" } else { "release:$ReleaseTag" }
 }
 
@@ -154,13 +148,7 @@ function Download-RefZipball {
         throw "Missing -Ref for ref zipball update."
     }
 
-    $Token = Get-PrivateGitHubToken
-    $Headers = @{
-        Authorization = "Bearer $Token"
-        Accept = "application/vnd.github+json"
-        "X-GitHub-Api-Version" = "2022-11-28"
-        "User-Agent" = "pos-dashboard-updater"
-    }
+    $Headers = New-GitHubHeaders -Accept "application/vnd.github+json"
     $ZipUrl = "https://api.github.com/repos/$RepoOwner/$RepoName/zipball/$Ref"
     Write-Step "Downloading repository zipball for ref $Ref"
     Invoke-WebRequest -Uri $ZipUrl -Headers $Headers -OutFile $Destination

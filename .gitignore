@@ -10,4 +10,8 @@ dist/
 release/
 .package/
 runtime/
+install-config.json
+PACKAGE.txt
+logs/
+backup-*/
 .DS_Store
