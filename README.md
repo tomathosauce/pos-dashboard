@@ -94,7 +94,23 @@ cd pos-dashboard
 .\scripts\build-windows-x86-package.ps1
 ```
 
-Upload `release\pos-dashboard-windows-x86.zip` to a GitHub Release. The store/backoffice machine only needs Docker Desktop and the 32-bit Paradox ODBC/BDE driver installed; it does not need Node, npm, or system Python.
+Upload `release\pos-dashboard-windows-x86.zip` to a GitHub Release. Or build, tag the current commit, and upload the release asset in one step with the GitHub CLI:
+
+```powershell
+cd pos-dashboard
+gh auth login
+.\scripts\publish-github-release.ps1 -Tag "v0.1.0"
+```
+
+The publish script requires a clean working tree by default so the uploaded package matches the current commit. It creates/pushes the tag, creates the GitHub Release when needed, and uploads `release\pos-dashboard-windows-x86.zip`.
+
+If the release already exists and you want to replace the asset:
+
+```powershell
+.\scripts\publish-github-release.ps1 -Tag "v0.1.0" -ClobberAsset
+```
+
+The store/backoffice machine only needs Docker Desktop and the 32-bit Paradox ODBC/BDE driver installed; it does not need Node, npm, or system Python.
 
 Fast target-machine install from the directory where the app should be installed:
 
