@@ -21,6 +21,29 @@ docker compose up --build
 Backend: <http://localhost:8000>  
 Frontend: <http://localhost:5173>
 
+## Development Setup
+
+Install backend and frontend dependencies from a Windows PowerShell prompt:
+
+```powershell
+cd pos-dashboard
+.\scripts\setup-dev.ps1
+```
+
+For live Paradox ODBC development, use a 32-bit Python environment and install the ODBC reader dependency:
+
+```powershell
+.\scripts\setup-dev.ps1 -PythonArchitecture x86 -WithOdbc
+```
+
+To install both optional Paradox readers:
+
+```powershell
+.\scripts\setup-dev.ps1 -AllReaders
+```
+
+The script creates `backend\.venv`, installs Python requirements, installs frontend npm packages, and copies `.env.example` to `.env` when `.env` does not exist.
+
 ## Live POS Sync
 
 The Paradox/BDE ODBC driver is a Windows host dependency. A normal Linux Docker container will not be able to use the Windows BDE driver directly.
