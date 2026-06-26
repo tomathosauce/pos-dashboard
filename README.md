@@ -127,6 +127,12 @@ gh auth login
 
 The publish script requires a clean working tree by default so the uploaded package matches the current commit. It creates/pushes the tag, creates the GitHub Release when needed, and uploads `release\pos-dashboard-windows-x86.zip`.
 
+To publish an already-built package without rebuilding it:
+
+```powershell
+.\scripts\publish-github-release.ps1 -Tag "v0.1.0" -SkipBuild
+```
+
 If the release already exists and you want to replace the asset:
 
 ```powershell

@@ -10,6 +10,7 @@ param(
     [switch]$Draft,
     [switch]$Prerelease,
     [switch]$SkipFrontendBuild,
+    [switch]$SkipBuild,
     [switch]$AllowDirty,
     [switch]$ClobberAsset
 )
@@ -89,20 +90,28 @@ try {
         $Notes = "Windows x86 self-contained dashboard release built from commit $ShortSha."
     }
 
-    Write-Step "Building Windows x86 release package"
-    $BuildArgs = @(
-        "-PythonVersion", $PythonVersion,
-        "-PackageName", $PackageName,
-        "-OutputDir", $ReleaseDir
-    )
-    if ($SkipFrontendBuild) {
-        $BuildArgs += "-SkipFrontendBuild"
+    if ($SkipBuild) {
+        Write-Step "Using existing Windows x86 release package"
+        if (-not (Test-Path $PackagePath)) {
+            throw "Package does not exist: $PackagePath. Run $PackageScript first, or omit -SkipBuild."
+        }
     }
-    $PowerShellArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PackageScript) + $BuildArgs
-    Invoke-Native -FilePath "powershell.exe" -Arguments $PowerShellArgs
+    else {
+        Write-Step "Building Windows x86 release package"
+        $BuildArgs = @(
+            "-PythonVersion", $PythonVersion,
+            "-PackageName", $PackageName,
+            "-OutputDir", $ReleaseDir
+        )
+        if ($SkipFrontendBuild) {
+            $BuildArgs += "-SkipFrontendBuild"
+        }
+        $PowerShellArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PackageScript) + $BuildArgs
+        Invoke-Native -FilePath "powershell.exe" -Arguments $PowerShellArgs
 
-    if (-not (Test-Path $PackagePath)) {
-        throw "Package was not created: $PackagePath"
+        if (-not (Test-Path $PackagePath)) {
+            throw "Package was not created: $PackagePath"
+        }
     }
 
     Write-Step "Preparing release tag $Tag"
