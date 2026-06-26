@@ -131,9 +131,16 @@ try {
 
     Write-Step "Publishing GitHub Release"
     $ReleaseExists = $false
-    & gh release view $Tag --repo $Repo *> $null
-    if ($LASTEXITCODE -eq 0) {
-        $ReleaseExists = $true
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & gh release view $Tag --repo $Repo *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $ReleaseExists = $true
+        }
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
     }
 
     if ($ReleaseExists) {
