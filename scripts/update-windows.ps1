@@ -216,26 +216,67 @@ function Stop-DashboardProcess {
     }
 }
 
+function Test-DockerEngineReady {
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & docker info *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+}
+
+function Use-DockerDesktopContextIfAvailable {
+    if ($env:DOCKER_CONTEXT -eq "desktop-linux") {
+        return $true
+    }
+
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & docker context inspect desktop-linux *> $null
+        if ($LASTEXITCODE -ne 0) {
+            return $false
+        }
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+
+    $env:DOCKER_CONTEXT = "desktop-linux"
+    return $true
+}
+
 function Start-DockerDesktopIfNeeded {
-    if (docker info *> $null) {
+    if (Test-DockerEngineReady) {
+        return
+    }
+
+    if ((Use-DockerDesktopContextIfAvailable) -and (Test-DockerEngineReady)) {
         return
     }
 
     $DockerDesktop = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
-    if (Test-Path $DockerDesktop) {
+    $DockerDesktopRunning = Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue
+    if ((-not $DockerDesktopRunning) -and (Test-Path $DockerDesktop)) {
         Write-Step "Starting Docker Desktop"
         Start-Process -FilePath $DockerDesktop | Out-Null
+    }
+    else {
+        Write-Step "Waiting for Docker Desktop engine"
     }
 
     $Deadline = (Get-Date).AddSeconds(180)
     do {
         Start-Sleep -Seconds 3
-        if (docker info *> $null) {
+        if ((Use-DockerDesktopContextIfAvailable) -and (Test-DockerEngineReady)) {
             return
         }
     } while ((Get-Date) -lt $Deadline)
 
-    throw "Docker Desktop is not running or Docker CLI is unavailable."
+    throw "Docker Desktop engine is not reachable from Docker CLI."
 }
 
 function Ensure-PostgresContainer {
