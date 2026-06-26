@@ -136,6 +136,7 @@ if (-not $PthFile) {
 $PthLines = Get-Content -Path $PthFile.FullName
 $NewPthLines = New-Object System.Collections.Generic.List[string]
 $AddedSitePackages = $false
+$BackendPathEntry = "..\..\backend"
 foreach ($Line in $PthLines) {
     if ($Line -eq "#import site" -or $Line -eq "import site") {
         if (-not $AddedSitePackages) {
@@ -147,6 +148,9 @@ foreach ($Line in $PthLines) {
     else {
         $NewPthLines.Add($Line)
     }
+}
+if (-not $NewPthLines.Contains($BackendPathEntry)) {
+    $NewPthLines.Add($BackendPathEntry)
 }
 if (-not $AddedSitePackages) {
     $NewPthLines.Add("Lib\site-packages")
@@ -162,12 +166,60 @@ if (-not (Test-Path $GetPip)) {
 
 Invoke-Native $PythonExe $GetPip "--no-warn-script-location"
 Invoke-Native $PythonExe -m pip install --no-warn-script-location --upgrade pip
-# SQLAlchemy's greenlet extra is not needed for this synchronous app, and
-# greenlet can force a compiler path on 32-bit Windows. Install SQLAlchemy
-# first without dependencies, then let the remaining requirements resolve.
-Invoke-Native $PythonExe -m pip install --no-warn-script-location --no-deps SQLAlchemy==2.0.36
-Invoke-Native $PythonExe -m pip install --no-warn-script-location -r (Join-Path $StageBackend "requirements-windows-x86.txt")
-Invoke-Native $PythonExe -c "import struct, pyodbc, fastapi, sqlalchemy, pg8000, uvicorn; assert struct.calcsize('P') * 8 == 32; print('validated 32-bit runtime')"
+$WindowsRequirements = Join-Path $StageBackend "requirements-windows-x86.txt"
+$RuntimeRequirements = Join-Path $BuildRoot "requirements-windows-x86-runtime.txt"
+$WindowsRequirementLines = Get-Content -Path $WindowsRequirements
+$SqlAlchemyRequirement = ($WindowsRequirementLines | Where-Object { $_ -match "^\s*SQLAlchemy\s*(==|>=|<=|~=|!=|>|<)" } | Select-Object -First 1).Trim()
+$AlembicRequirement = ($WindowsRequirementLines | Where-Object { $_ -match "^\s*alembic\s*(==|>=|<=|~=|!=|>|<)" } | Select-Object -First 1).Trim()
+if (-not $SqlAlchemyRequirement) {
+    throw "Missing SQLAlchemy requirement in $WindowsRequirements."
+}
+if (-not $AlembicRequirement) {
+    throw "Missing alembic requirement in $WindowsRequirements."
+}
+
+# SQLAlchemy's greenlet dependency is not needed for this synchronous app, and
+# greenlet does not currently provide a cp311-win32 wheel. Install SQLAlchemy,
+# and Alembic's SQLAlchemy-facing package, without dependency resolution; then
+# resolve the rest of the runtime normally.
+Invoke-Native $PythonExe -m pip install --no-warn-script-location --no-deps $SqlAlchemyRequirement
+Invoke-Native $PythonExe -m pip install --no-warn-script-location --no-deps $AlembicRequirement
+$WindowsRequirementLines |
+    Where-Object { $_ -notmatch "^\s*(SQLAlchemy|alembic)\s*(==|>=|<=|~=|!=|>|<)" } |
+    Set-Content -Path $RuntimeRequirements -Encoding ASCII
+Invoke-Native $PythonExe -m pip install --no-warn-script-location -r $RuntimeRequirements Mako
+
+$PreviousDatabaseUrl = $env:DATABASE_URL
+$PreviousFrontendDistDir = $env:FRONTEND_DIST_DIR
+$PreviousDontWriteBytecode = $env:PYTHONDONTWRITEBYTECODE
+$env:DATABASE_URL = "postgresql+pg8000://pos_dashboard:pos_dashboard@127.0.0.1:5432/pos_dashboard"
+$env:FRONTEND_DIST_DIR = Join-Path $StageFrontend "dist"
+$env:PYTHONDONTWRITEBYTECODE = "1"
+try {
+    Invoke-Native $PythonExe -c "import struct, pyodbc, fastapi, sqlalchemy, pg8000, uvicorn; from app.main import app; assert struct.calcsize('P') * 8 == 32; assert app.title; print('validated 32-bit runtime')"
+}
+finally {
+    if ($null -ne $PreviousDatabaseUrl) {
+        $env:DATABASE_URL = $PreviousDatabaseUrl
+    }
+    else {
+        Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    }
+
+    if ($null -ne $PreviousFrontendDistDir) {
+        $env:FRONTEND_DIST_DIR = $PreviousFrontendDistDir
+    }
+    else {
+        Remove-Item Env:FRONTEND_DIST_DIR -ErrorAction SilentlyContinue
+    }
+
+    if ($null -ne $PreviousDontWriteBytecode) {
+        $env:PYTHONDONTWRITEBYTECODE = $PreviousDontWriteBytecode
+    }
+    else {
+        Remove-Item Env:PYTHONDONTWRITEBYTECODE -ErrorAction SilentlyContinue
+    }
+}
 
 Copy-Item -Force (Join-Path $ScriptsDir "install-windows.ps1") (Join-Path $StageDir "install-windows.ps1")
 Copy-Item -Force (Join-Path $ScriptsDir "run-dashboard.ps1") (Join-Path $StageDir "run-dashboard.ps1")
