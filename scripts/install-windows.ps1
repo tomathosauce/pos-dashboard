@@ -59,6 +59,19 @@ function Set-TextFileNoBom {
     [System.IO.File]::WriteAllLines($Path, $Lines, $Encoding)
 }
 
+function Expand-PackageArchive {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArchivePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    if (Test-Path $DestinationPath) {
+        Remove-Item -Recurse -Force $DestinationPath
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
+}
+
 function New-LocalPassword {
     $Chars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789".ToCharArray()
     -join (1..32 | ForEach-Object { $Chars | Get-Random })
@@ -348,7 +361,7 @@ try {
     }
 
     Write-Step "Extracting package"
-    Expand-Archive -Path $PackageZip -DestinationPath $ExtractDir -Force
+    Expand-PackageArchive -ArchivePath $PackageZip -DestinationPath $ExtractDir
 
     Write-Step "Installing files to $InstallDir"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null

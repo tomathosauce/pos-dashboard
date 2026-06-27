@@ -42,6 +42,19 @@ function Set-TextFileNoBom {
     [System.IO.File]::WriteAllLines($Path, $Lines, $Encoding)
 }
 
+function Expand-PackageArchive {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArchivePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    if (Test-Path $DestinationPath) {
+        Remove-Item -Recurse -Force $DestinationPath
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
+}
+
 function Get-ScriptDirectory {
     if ($PSCommandPath) {
         return Split-Path -Parent $PSCommandPath
@@ -438,7 +451,7 @@ try {
     }
 
     Write-Step "Extracting update package"
-    Expand-Archive -Path $PackageZip -DestinationPath $ExtractDir -Force
+    Expand-PackageArchive -ArchivePath $PackageZip -DestinationPath $ExtractDir
     $PackageRoot = Find-PackageRoot -ExtractDir $ExtractDir
 
     $TaskName = Stop-DashboardTask
