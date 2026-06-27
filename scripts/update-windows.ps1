@@ -295,7 +295,7 @@ function Ensure-PostgresContainer {
     $Running = docker ps --format "{{.Names}}" | Where-Object { $_ -eq $ContainerName }
     if (-not $Running) {
         Write-Step "Starting PostgreSQL container $ContainerName"
-        Invoke-Native docker start $ContainerName
+        Invoke-Native -FilePath docker -Arguments @("start", $ContainerName)
     }
 
     $Deadline = (Get-Date).AddSeconds(120)

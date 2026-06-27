@@ -218,19 +218,22 @@ function Ensure-PostgresContainer {
         $Running = docker ps --format "{{.Names}}" | Where-Object { $_ -eq $PostgresContainerName }
         if (-not $Running) {
             Write-Step "Starting existing PostgreSQL container"
-            Invoke-Native docker start $PostgresContainerName
+            Invoke-Native -FilePath docker -Arguments @("start", $PostgresContainerName)
         }
     }
     else {
         Write-Step "Creating PostgreSQL container"
-        Invoke-Native docker run -d `
-            --name $PostgresContainerName `
-            -e POSTGRES_DB=pos_dashboard `
-            -e POSTGRES_USER=pos_dashboard `
-            -e POSTGRES_PASSWORD=$PostgresPassword `
-            -p "127.0.0.1:$PostgresPort`:5432" `
-            -v "$PostgresVolumeName`:/var/lib/postgresql/data" `
-            postgres:16-alpine
+        $DockerRunArgs = @(
+            "run", "-d",
+            "--name", $PostgresContainerName,
+            "-e", "POSTGRES_DB=pos_dashboard",
+            "-e", "POSTGRES_USER=pos_dashboard",
+            "-e", "POSTGRES_PASSWORD=$PostgresPassword",
+            "-p", "127.0.0.1:$PostgresPort`:5432",
+            "-v", "$PostgresVolumeName`:/var/lib/postgresql/data",
+            "postgres:16-alpine"
+        )
+        Invoke-Native -FilePath docker -Arguments $DockerRunArgs
     }
 
     $Deadline = (Get-Date).AddSeconds(120)
