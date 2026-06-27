@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     @cached_property
     def pos_sources(self) -> list[PosSourceConfig]:
         raw: Any = json.loads(self.pos_sources_json)
+        if isinstance(raw, dict):
+            raw = [raw]
         if not isinstance(raw, list):
             raise ValueError("POS_SOURCES_JSON must be a JSON array")
         return [PosSourceConfig.model_validate(item) for item in raw]

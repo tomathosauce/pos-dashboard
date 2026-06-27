@@ -105,7 +105,7 @@ function Rewrite-BackendEnv {
     if (-not $Source.reader) {
         $Source.reader = "odbc"
     }
-    $PosSourcesJson = @($Source) | ConvertTo-Json -Compress
+    $PosSourcesJson = ConvertTo-Json -InputObject @($Source) -Compress
 
     Set-TextFileNoBom -Path (Join-Path $BackendDir ".env") -Lines @(
         "DATABASE_URL=$DatabaseUrl",

@@ -289,7 +289,7 @@ function Write-BackendEnv {
         odbc_connection_string = if ($OdbcConnectionString) { $OdbcConnectionString } else { $null }
         odbc_dsn = if ($OdbcDsn) { $OdbcDsn } else { $null }
     }
-    $PosSourcesJson = @($Source) | ConvertTo-Json -Compress
+    $PosSourcesJson = ConvertTo-Json -InputObject @($Source) -Compress
 
     $EnvPath = Join-Path $BackendDir ".env"
     Set-TextFileNoBom -Path $EnvPath -Lines @(
