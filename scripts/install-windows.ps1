@@ -300,6 +300,16 @@ function Ensure-PostgresContainer {
                 $script:PostgresPort = $ExistingHostPort
             }
         }
+        elseif ((-not $ExistingHostPort) -and $ExplicitPostgresPort) {
+            if ($OverrideExistingConfig) {
+                Write-Step "Recreating PostgreSQL container with host port $PostgresPort"
+                Invoke-Native -FilePath docker -Arguments @("rm", "-f", $PostgresContainerName)
+                $Exists = $false
+            }
+            else {
+                throw "Existing PostgreSQL container '$PostgresContainerName' exists, but its host port could not be detected. Pass -OverrideExistingConfig to recreate the container with the requested host port while keeping the Docker volume."
+            }
+        }
     }
 
     if ($Exists) {
@@ -459,6 +469,8 @@ if ($ExistingConfig -and (-not $OverrideExistingConfig)) {
 if (-not (Test-Path $PosSourcePath)) {
     throw "POS source path does not exist: $PosSourcePath"
 }
+
+Write-Step "Using dashboard port $Port and PostgreSQL host port $PostgresPort"
 
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pos-dashboard-install-" + [Guid]::NewGuid().ToString("N"))
 $PackageZip = Join-Path $TempDir $AssetName
