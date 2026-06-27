@@ -21,11 +21,37 @@ if (-not (Test-Path $PythonExe)) {
 
 $Config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json
 $LogPath = Join-Path $LogDir ("dashboard-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+$LogEncoding = New-Object System.Text.UTF8Encoding($false)
 
 function Write-Log {
     param([Parameter(Mandatory = $true)][string]$Message)
     $Line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
-    $Line | Tee-Object -FilePath $LogPath -Append
+    Write-Host $Line
+    [System.IO.File]::AppendAllText($LogPath, "$Line`r`n", $LogEncoding)
+}
+
+function ConvertTo-CmdArgument {
+    param([Parameter(Mandatory = $true)][string]$Value)
+
+    if ($Value -notmatch '[\s&()^|<>"]') {
+        return $Value
+    }
+
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
+function Invoke-NativeLogged {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $CommandParts = @($FilePath) + $Arguments | ForEach-Object {
+        ConvertTo-CmdArgument -Value $_
+    }
+    $Command = "{0} >> {1} 2>&1" -f ($CommandParts -join " "), (ConvertTo-CmdArgument -Value $LogPath)
+    & $env:ComSpec /d /s /c $Command
+    return $LASTEXITCODE
 }
 
 function Test-DockerEngineReady {
@@ -123,17 +149,17 @@ Ensure-PostgresContainer
 Push-Location $BackendDir
 try {
     Write-Log "Running database migrations."
-    & $PythonExe -m alembic upgrade head *>> $LogPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Alembic migration failed with exit code $LASTEXITCODE."
+    $ExitCode = Invoke-NativeLogged -FilePath $PythonExe -Arguments @("-m", "alembic", "upgrade", "head")
+    if ($ExitCode -ne 0) {
+        throw "Alembic migration failed with exit code $ExitCode."
     }
 
     $HostName = [string]$Config.host
     $Port = [int]$Config.port
     Write-Log "Starting FastAPI on $HostName`:$Port."
-    & $PythonExe -m uvicorn app.main:app --host $HostName --port $Port *>> $LogPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Uvicorn exited with code $LASTEXITCODE."
+    $ExitCode = Invoke-NativeLogged -FilePath $PythonExe -Arguments @("-m", "uvicorn", "app.main:app", "--host", $HostName, "--port", [string]$Port)
+    if ($ExitCode -ne 0) {
+        throw "Uvicorn exited with code $ExitCode."
     }
 }
 finally {
