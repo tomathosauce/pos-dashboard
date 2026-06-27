@@ -304,7 +304,7 @@ function Register-DashboardTask {
     $Principal = New-ScheduledTaskPrincipal `
         -UserId "$env:USERDOMAIN\$env:USERNAME" `
         -LogonType Interactive `
-        -RunLevel LeastPrivilege
+        -RunLevel Limited
     $Settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries `
