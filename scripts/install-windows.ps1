@@ -49,6 +49,16 @@ function Invoke-Native {
     }
 }
 
+function Set-TextFileNoBom {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Lines
+    )
+
+    $Encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($Path, $Lines, $Encoding)
+}
+
 function New-LocalPassword {
     $Chars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789".ToCharArray()
     -join (1..32 | ForEach-Object { $Chars | Get-Random })
@@ -269,7 +279,7 @@ function Write-BackendEnv {
     $PosSourcesJson = @($Source) | ConvertTo-Json -Compress
 
     $EnvPath = Join-Path $BackendDir ".env"
-    Set-Content -Path $EnvPath -Encoding UTF8 -Value @(
+    Set-TextFileNoBom -Path $EnvPath -Lines @(
         "DATABASE_URL=$DatabaseUrl",
         "API_CORS_ORIGINS=http://localhost:$Port,http://127.0.0.1:$Port",
         "ENABLE_SCHEDULER=true",

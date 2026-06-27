@@ -25,6 +25,16 @@ function Get-ScriptDirectory {
     return $null
 }
 
+function Set-TextFileNoBom {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Lines
+    )
+
+    $Encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($Path, $Lines, $Encoding)
+}
+
 function Get-ConfigValue {
     param(
         [object]$Config,
@@ -97,7 +107,7 @@ function Rewrite-BackendEnv {
     }
     $PosSourcesJson = @($Source) | ConvertTo-Json -Compress
 
-    Set-Content -Path (Join-Path $BackendDir ".env") -Encoding UTF8 -Value @(
+    Set-TextFileNoBom -Path (Join-Path $BackendDir ".env") -Lines @(
         "DATABASE_URL=$DatabaseUrl",
         "API_CORS_ORIGINS=http://localhost:$Port,http://127.0.0.1:$Port",
         "ENABLE_SCHEDULER=true",
