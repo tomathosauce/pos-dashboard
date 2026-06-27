@@ -25,6 +25,7 @@ import {
   fetchSources,
   fetchSummary,
   fetchSyncRuns,
+  runSyncNow,
 } from "@/lib/api";
 import { formatCurrency, formatDateTime, formatNumber, yesterdayIso } from "@/lib/format";
 
@@ -58,6 +59,9 @@ const translations = {
     appSubtitle: "Sales and payment reconciliation",
     allSources: "All sources",
     refresh: "Refresh",
+    forceSyncNow: "Force sync now",
+    forceSyncingNow: "Syncing...",
+    syncRequestFailed: "Sync request failed",
     dashboardRequestFailed: "Dashboard request failed",
     sales: "Sales",
     paymentRowsRead: (count: string) => `${count} payment rows read`,
@@ -109,6 +113,9 @@ const translations = {
     appSubtitle: "销售与付款对账",
     allSources: "所有来源",
     refresh: "刷新",
+    forceSyncNow: "立即强制同步",
+    forceSyncingNow: "同步中...",
+    syncRequestFailed: "同步请求失败",
     dashboardRequestFailed: "仪表盘请求失败",
     sales: "销售额",
     paymentRowsRead: (count: string) => `已读取 ${count} 条付款记录`,
@@ -162,6 +169,9 @@ const translations = {
     appSubtitle: string;
     allSources: string;
     refresh: string;
+    forceSyncNow: string;
+    forceSyncingNow: string;
+    syncRequestFailed: string;
     dashboardRequestFailed: string;
     sales: string;
     paymentRowsRead: (count: string) => string;
@@ -239,6 +249,7 @@ function App() {
   const [salesChartView, setSalesChartView] = useState<SalesChartView>("daily");
   const [state, setState] = useState<LoadState>(emptyState);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const t = translations[language];
   const locale = localeByLanguage[language];
@@ -259,6 +270,19 @@ function App() {
       setError(err instanceof Error ? err.message : t.dashboardRequestFailed);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleForceSyncNow() {
+    setIsSyncing(true);
+    setError(null);
+    try {
+      await runSyncNow(source);
+      await loadDashboard();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.syncRequestFailed);
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -322,7 +346,7 @@ function App() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-[150px_150px_160px_auto_auto]">
+          <div className="grid gap-3 sm:grid-cols-[150px_150px_160px_auto_auto_auto]">
             <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
             <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
             <select
@@ -337,9 +361,13 @@ function App() {
                 </option>
               ))}
             </select>
-            <Button variant="secondary" onClick={loadDashboard} disabled={isLoading}>
+            <Button variant="secondary" onClick={loadDashboard} disabled={isLoading || isSyncing}>
               <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
               {t.refresh}
+            </Button>
+            <Button type="button" onClick={handleForceSyncNow} disabled={isSyncing || isLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? t.forceSyncingNow : t.forceSyncNow}
             </Button>
             <Button
               type="button"

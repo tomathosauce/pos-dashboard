@@ -56,6 +56,14 @@ async function getJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function postJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export async function fetchSources() {
   return getJson<Source[]>("/api/sources");
 }
@@ -72,4 +80,9 @@ export async function fetchPayments(params: { from: string; to: string; source: 
 
 export async function fetchSyncRuns(limit = 10) {
   return getJson<SyncRun[]>(`/api/sync-runs?limit=${limit}`);
+}
+
+export async function runSyncNow(source: string) {
+  const search = new URLSearchParams({ source });
+  return postJson<SyncRun[]>(`/api/sync/run?${search.toString()}`);
 }
