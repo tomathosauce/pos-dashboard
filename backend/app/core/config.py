@@ -29,7 +29,7 @@ def _default_source_path() -> str:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    database_url: str = "postgresql+psycopg://pos_dashboard:pos_dashboard@localhost:5432/pos_dashboard"
+    database_url: str = "postgresql+psycopg://pos_dashboard:pos_dashboard@localhost:10001/pos_dashboard"
     api_cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     enable_scheduler: bool = True
     daily_sync_hour: int = 8

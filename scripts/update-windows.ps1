@@ -226,7 +226,7 @@ function Stop-DashboardTask {
 function Stop-DashboardProcess {
     $Port = [int](Get-ConfigValue -Config $Config -Name "port")
     if (-not $Port) {
-        $Port = 8000
+        $Port = 10000
     }
 
     $Connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
@@ -365,11 +365,11 @@ function Rewrite-BackendEnv {
     $Password = [string](Get-ConfigValue -Config $Config -Name "postgresPassword")
     $PostgresPort = [int](Get-ConfigValue -Config $Config -Name "postgresPort")
     if (-not $PostgresPort) {
-        $PostgresPort = 5432
+        $PostgresPort = 10001
     }
     $Port = [int](Get-ConfigValue -Config $Config -Name "port")
     if (-not $Port) {
-        $Port = 8000
+        $Port = 10000
     }
     $EscapedPassword = [Uri]::EscapeDataString($Password)
     $DatabaseUrl = "postgresql+pg8000://pos_dashboard:$EscapedPassword@127.0.0.1:$PostgresPort/pos_dashboard"
@@ -477,7 +477,7 @@ try {
     Write-Step "Update complete"
     $DashboardPort = [int](Get-ConfigValue -Config $Config -Name "port")
     if (-not $DashboardPort) {
-        $DashboardPort = 8000
+        $DashboardPort = 10000
     }
     Write-Host "Updated from: $UpdatedFrom"
     Write-Host "Dashboard URL: http://127.0.0.1:$DashboardPort/"

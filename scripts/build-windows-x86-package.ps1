@@ -192,7 +192,7 @@ Invoke-Native $PythonExe -m pip install --no-warn-script-location -r $RuntimeReq
 $PreviousDatabaseUrl = $env:DATABASE_URL
 $PreviousFrontendDistDir = $env:FRONTEND_DIST_DIR
 $PreviousDontWriteBytecode = $env:PYTHONDONTWRITEBYTECODE
-$env:DATABASE_URL = "postgresql+pg8000://pos_dashboard:pos_dashboard@127.0.0.1:5432/pos_dashboard"
+$env:DATABASE_URL = "postgresql+pg8000://pos_dashboard:pos_dashboard@127.0.0.1:10001/pos_dashboard"
 $env:FRONTEND_DIST_DIR = Join-Path $StageFrontend "dist"
 $env:PYTHONDONTWRITEBYTECODE = "1"
 try {

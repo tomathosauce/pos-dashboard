@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: pos_dashboard
       POSTGRES_PASSWORD: pos_dashboard
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-10001}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -30,7 +30,7 @@ services:
     volumes:
       - ..:/pos-source:ro
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:10000:10000"
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +39,7 @@ services:
     build:
       context: ./frontend
     environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:10000}
     ports:
       - "127.0.0.1:5173:5173"
     depends_on:

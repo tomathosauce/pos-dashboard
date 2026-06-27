@@ -18,7 +18,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Backend: <http://localhost:8000>  
+Backend: <http://localhost:10000>  
 Frontend: <http://localhost:5173>
 
 ## Development Setup
@@ -66,7 +66,7 @@ py -m venv .venv
 
 ```powershell
 .\.venv\Scripts\alembic upgrade head
-.\.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 10000
 ```
 
 The backend scheduler runs yesterday's calendar-day sync at 8:00am. You can also run a manual sync:
@@ -161,19 +161,46 @@ irm `
   | iex
 ```
 
-By default, the installer uses the current directory as both:
+By default, the installer uses:
 
-- the install directory
-- the POS source folder
+- the current directory as the install directory
+- the current directory as the POS source folder
+- `10000` as the dashboard web port
+- `10001` as the PostgreSQL host port
 
-Override those when needed:
+Override those with environment variables when needed:
 
 ```powershell
 $env:POS_DASHBOARD_REPO = "your-org/pos-dashboard"
 $env:POS_DASHBOARD_INSTALL_DIR = "C:\POSDashboard"
-$env:POS_DASHBOARD_SOURCE_PATH = "C:\Path\To\Firestec"
+$env:POS_DASHBOARD_PARADOX_DATABASE_PATH = "C:\Path\To\Firestec"
 
 irm "https://raw.githubusercontent.com/${env:POS_DASHBOARD_REPO}/main/scripts/install-windows.ps1" | iex
+```
+
+Or pass install arguments directly:
+
+```powershell
+$install = irm "https://raw.githubusercontent.com/your-org/pos-dashboard/main/scripts/install-windows.ps1"
+& ([scriptblock]::Create($install)) `
+  -Repo "your-org/pos-dashboard" `
+  -InstallDir "C:\POSDashboard" `
+  -ParadoxDatabasePath "C:\Path\To\Firestec" `
+  -Port 10000 `
+  -PostgresPort 10001
+```
+
+When reinstalling over an existing install, the installer preserves the saved ports and POS path by default. Pass `-OverrideExistingConfig` to intentionally replace the saved config with the current arguments, environment variables, or defaults:
+
+```powershell
+$install = irm "https://raw.githubusercontent.com/your-org/pos-dashboard/main/scripts/install-windows.ps1"
+& ([scriptblock]::Create($install)) `
+  -Repo "your-org/pos-dashboard" `
+  -InstallDir "C:\POSDashboard" `
+  -ParadoxDatabasePath "\\192.168.0.109\firestec\EMP3" `
+  -Port 10000 `
+  -PostgresPort 10001 `
+  -OverrideExistingConfig
 ```
 
 Avoid putting a PAT in the URL itself when using a private repo. Passing it through the `Authorization` header keeps it out of command history and most logs.
@@ -191,7 +218,7 @@ The installer:
 Installed dashboard URL:
 
 ```text
-http://127.0.0.1:8000/
+http://127.0.0.1:10000/
 ```
 
 The built React app is served by FastAPI, so the installed dashboard runs as one Python process plus the PostgreSQL Docker container.

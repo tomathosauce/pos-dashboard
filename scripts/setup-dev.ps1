@@ -167,7 +167,7 @@ try {
     Write-Host "Backend venv: $VenvDir"
     Write-Host "Start PostgreSQL: docker compose up db"
     Write-Host "Run migrations:  cd backend; .\.venv\Scripts\alembic upgrade head"
-    Write-Host "Run backend:     cd backend; .\.venv\Scripts\uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+    Write-Host "Run backend:     cd backend; .\.venv\Scripts\uvicorn app.main:app --reload --host 127.0.0.1 --port 10000"
     Write-Host "Run frontend:    cd frontend; npm run dev"
 }
 finally {

@@ -81,11 +81,11 @@ function Rewrite-BackendEnv {
     $Password = [string](Get-ConfigValue -Config $Config -Name "postgresPassword")
     $PostgresPort = [int](Get-ConfigValue -Config $Config -Name "postgresPort")
     if (-not $PostgresPort) {
-        $PostgresPort = 5432
+        $PostgresPort = 10001
     }
     $Port = [int](Get-ConfigValue -Config $Config -Name "port")
     if (-not $Port) {
-        $Port = 8000
+        $Port = 10000
     }
 
     $EscapedPassword = [Uri]::EscapeDataString($Password)

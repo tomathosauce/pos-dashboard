@@ -8,27 +8,32 @@ param(
     [string]$PackagePath,
     [string]$InstallDir = $env:POS_DASHBOARD_INSTALL_DIR,
     [string]$GitHubToken = $env:GITHUB_TOKEN,
-    [string]$PosSourcePath = $env:POS_DASHBOARD_SOURCE_PATH,
+    [Alias("ParadoxDatabasePath", "ParadoxPath", "DatabasePath")]
+    [string]$PosSourcePath = $(if ($env:POS_DASHBOARD_PARADOX_DATABASE_PATH) { $env:POS_DASHBOARD_PARADOX_DATABASE_PATH } else { $env:POS_DASHBOARD_SOURCE_PATH }),
     [string]$SourceName = $env:POS_DASHBOARD_SOURCE_NAME,
     [ValidateSet("odbc")][string]$Reader = "odbc",
     [string]$OdbcDsn = $env:POS_DASHBOARD_ODBC_DSN,
     [string]$OdbcConnectionString = $env:POS_DASHBOARD_ODBC_CONNECTION_STRING,
-    [int]$Port = $(if ($env:POS_DASHBOARD_PORT) { [int]$env:POS_DASHBOARD_PORT } else { 8000 }),
+    [int]$Port = $(if ($env:POS_DASHBOARD_PORT) { [int]$env:POS_DASHBOARD_PORT } else { 10000 }),
     [string]$TaskName = $(if ($env:POS_DASHBOARD_TASK_NAME) { $env:POS_DASHBOARD_TASK_NAME } else { "POS Dashboard" }),
     [string]$PostgresContainerName = $(if ($env:POS_DASHBOARD_POSTGRES_CONTAINER) { $env:POS_DASHBOARD_POSTGRES_CONTAINER } else { "pos-dashboard-postgres" }),
     [string]$PostgresVolumeName = $(if ($env:POS_DASHBOARD_POSTGRES_VOLUME) { $env:POS_DASHBOARD_POSTGRES_VOLUME } else { "pos-dashboard-postgres-data" }),
-    [int]$PostgresPort = $(if ($env:POS_DASHBOARD_POSTGRES_PORT) { [int]$env:POS_DASHBOARD_POSTGRES_PORT } else { 5432 }),
+    [int]$PostgresPort = $(if ($env:POS_DASHBOARD_POSTGRES_PORT) { [int]$env:POS_DASHBOARD_POSTGRES_PORT } else { 10001 }),
     [string]$PostgresPassword,
+    [Alias("ForceConfig", "ResetConfig", "OverwriteConfig")]
+    [switch]$OverrideExistingConfig,
     [switch]$SkipTask
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$ExplicitPosSourcePath = -not [string]::IsNullOrWhiteSpace($PosSourcePath)
+$ExplicitPosSourcePath = $PSBoundParameters.ContainsKey("PosSourcePath") -or -not [string]::IsNullOrWhiteSpace($env:POS_DASHBOARD_SOURCE_PATH) -or -not [string]::IsNullOrWhiteSpace($env:POS_DASHBOARD_PARADOX_DATABASE_PATH)
 $ExplicitSourceName = -not [string]::IsNullOrWhiteSpace($SourceName)
 $ExplicitOdbcDsn = -not [string]::IsNullOrWhiteSpace($OdbcDsn)
 $ExplicitOdbcConnectionString = -not [string]::IsNullOrWhiteSpace($OdbcConnectionString)
+$ExplicitPort = $PSBoundParameters.ContainsKey("Port") -or -not [string]::IsNullOrWhiteSpace($env:POS_DASHBOARD_PORT)
+$ExplicitPostgresPort = $PSBoundParameters.ContainsKey("PostgresPort") -or -not [string]::IsNullOrWhiteSpace($env:POS_DASHBOARD_POSTGRES_PORT)
 
 function Write-Step {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -253,10 +258,50 @@ function Get-ExistingContainerPassword {
     return $null
 }
 
+function Get-ExistingContainerHostPort {
+    param([Parameter(Mandatory = $true)][string]$ContainerName)
+
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $PortOutput = docker port $ContainerName "5432/tcp" 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $PortOutput) {
+            return $null
+        }
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+
+    $PortText = ($PortOutput | Select-Object -First 1).Trim()
+    if ($PortText -match ":(?<port>\d+)$") {
+        return [int]$Matches.port
+    }
+    return $null
+}
+
 function Ensure-PostgresContainer {
     Start-DockerDesktopIfNeeded
 
     $Exists = docker ps -a --format "{{.Names}}" | Where-Object { $_ -eq $PostgresContainerName }
+    if ($Exists) {
+        $ExistingHostPort = Get-ExistingContainerHostPort -ContainerName $PostgresContainerName
+        if ($ExistingHostPort -and $ExistingHostPort -ne $PostgresPort) {
+            if ($OverrideExistingConfig) {
+                Write-Step "Recreating PostgreSQL container with host port $PostgresPort"
+                Invoke-Native -FilePath docker -Arguments @("rm", "-f", $PostgresContainerName)
+                $Exists = $false
+            }
+            elseif ($ExplicitPostgresPort) {
+                throw "Existing PostgreSQL container '$PostgresContainerName' maps host port $ExistingHostPort, but -PostgresPort was set to $PostgresPort. Pass -OverrideExistingConfig to recreate the container with the requested host port while keeping the Docker volume."
+            }
+            else {
+                Write-Warning "Existing PostgreSQL container '$PostgresContainerName' maps host port $ExistingHostPort; preserving that port."
+                $script:PostgresPort = $ExistingHostPort
+            }
+        }
+    }
+
     if ($Exists) {
         $Running = docker ps --format "{{.Names}}" | Where-Object { $_ -eq $PostgresContainerName }
         if (-not $Running) {
@@ -368,7 +413,23 @@ if (Test-Path $ExistingConfigPath) {
     $ExistingConfig = Get-Content -Raw -Path $ExistingConfigPath | ConvertFrom-Json
 }
 
-if ($ExistingConfig) {
+if ($ExistingConfig -and $OverrideExistingConfig) {
+    Write-Step "Overriding existing install configuration"
+}
+
+if ($ExistingConfig -and (-not $OverrideExistingConfig)) {
+    if (-not $ExplicitPort) {
+        $ExistingPort = [int](Get-ConfigValue -Config $ExistingConfig -Name "port")
+        if ($ExistingPort) {
+            $Port = $ExistingPort
+        }
+    }
+    if (-not $ExplicitPostgresPort) {
+        $ExistingPostgresPort = [int](Get-ConfigValue -Config $ExistingConfig -Name "postgresPort")
+        if ($ExistingPostgresPort) {
+            $PostgresPort = $ExistingPostgresPort
+        }
+    }
     if (-not $ExplicitPosSourcePath) {
         $ExistingPosSourcePath = [string](Get-ConfigValue -Config $ExistingConfig -Name "posSourcePath")
         if ($ExistingPosSourcePath) {
