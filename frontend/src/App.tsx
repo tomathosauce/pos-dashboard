@@ -10,6 +10,7 @@ import {
   Languages,
   ReceiptText,
   RefreshCw,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -78,6 +79,9 @@ const translations = {
     closeCalendar: "Close calendar",
     weekdaysShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     refresh: "Refresh",
+    sync: "Sync",
+    openSyncPanel: "Open sync controls",
+    closeSyncPanel: "Close sync controls",
     forceSyncNow: "Force sync now",
     forceSyncingNow: "Syncing...",
     syncRequestFailed: "Sync request failed",
@@ -86,6 +90,10 @@ const translations = {
     paymentRowsRead: (count: string) => `${count} payment rows read`,
     receipts: "Receipts",
     paymentAllocations: (count: string) => `${count} payment allocations`,
+    salesDays: "Sales Days",
+    syncedDaysInWindow: "Days with sales in this window",
+    averageDailySales: "Avg. Daily Sales",
+    acrossSyncedDays: "Across synced sales days",
     lastSync: "Last Sync",
     noRuns: "No runs",
     never: "Never",
@@ -108,6 +116,8 @@ const translations = {
     totalsByMethod: "Totals by method",
     noPaymentTotals: "No payment totals for this range",
     syncStatus: "Sync Status",
+    manualSync: "Manual Sync",
+    selectedSource: "Selected Source",
     mostRecentRuns: "Most recent runs",
     noSyncRuns: "No sync runs recorded.",
     syncRows: (matched: string, read: string) => `${matched} matched / ${read} read`,
@@ -142,6 +152,9 @@ const translations = {
     closeCalendar: "关闭日历",
     weekdaysShort: ["日", "一", "二", "三", "四", "五", "六"],
     refresh: "刷新",
+    sync: "同步",
+    openSyncPanel: "打开同步控制",
+    closeSyncPanel: "关闭同步控制",
     forceSyncNow: "立即强制同步",
     forceSyncingNow: "同步中...",
     syncRequestFailed: "同步请求失败",
@@ -150,6 +163,10 @@ const translations = {
     paymentRowsRead: (count: string) => `已读取 ${count} 条付款记录`,
     receipts: "收据",
     paymentAllocations: (count: string) => `${count} 笔付款分配`,
+    salesDays: "销售天数",
+    syncedDaysInWindow: "此窗口内有销售的天数",
+    averageDailySales: "日均销售额",
+    acrossSyncedDays: "按已同步销售日计算",
     lastSync: "上次同步",
     noRuns: "暂无运行记录",
     never: "从未",
@@ -172,6 +189,8 @@ const translations = {
     totalsByMethod: "按付款方式汇总",
     noPaymentTotals: "此范围内没有付款汇总",
     syncStatus: "同步状态",
+    manualSync: "手动同步",
+    selectedSource: "所选来源",
     mostRecentRuns: "最近运行",
     noSyncRuns: "暂无同步运行记录。",
     syncRows: (matched: string, read: string) => `匹配 ${matched} / 读取 ${read}`,
@@ -208,6 +227,9 @@ const translations = {
     closeCalendar: string;
     weekdaysShort: string[];
     refresh: string;
+    sync: string;
+    openSyncPanel: string;
+    closeSyncPanel: string;
     forceSyncNow: string;
     forceSyncingNow: string;
     syncRequestFailed: string;
@@ -216,6 +238,10 @@ const translations = {
     paymentRowsRead: (count: string) => string;
     receipts: string;
     paymentAllocations: (count: string) => string;
+    salesDays: string;
+    syncedDaysInWindow: string;
+    averageDailySales: string;
+    acrossSyncedDays: string;
     lastSync: string;
     noRuns: string;
     never: string;
@@ -238,6 +264,8 @@ const translations = {
     totalsByMethod: string;
     noPaymentTotals: string;
     syncStatus: string;
+    manualSync: string;
+    selectedSource: string;
     mostRecentRuns: string;
     noSyncRuns: string;
     syncRows: (matched: string, read: string) => string;
@@ -339,6 +367,7 @@ function App() {
   const [datePicker, setDatePicker] = useState<DatePickerState>(null);
   const [source, setSource] = useState("all");
   const [salesChartView, setSalesChartView] = useState<SalesChartView>("daily");
+  const [isSyncPanelOpen, setIsSyncPanelOpen] = useState(false);
   const [state, setState] = useState<LoadState>(emptyState);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -441,6 +470,9 @@ function App() {
     date: day.business_date,
     total: Number(day.total_amount),
   }));
+  const syncedSalesDayCount = dailySalesChartData.length;
+  const averageDailySales =
+    syncedSalesDayCount > 0 ? Number(state.summary?.total_amount ?? 0) / syncedSalesDayCount : 0;
   const monthlySalesChartData = Array.from(
     dailySalesChartData.reduce((months, day) => {
       const month = day.date.slice(0, 7);
@@ -560,9 +592,15 @@ function App() {
                 <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
                 {t.refresh}
               </Button>
-              <Button className="h-11 w-full" type="button" onClick={handleForceSyncNow} disabled={isSyncing || isLoading}>
+              <Button
+                className="h-11 w-full"
+                type="button"
+                variant="outline"
+                onClick={() => setIsSyncPanelOpen(true)}
+                aria-label={t.openSyncPanel}
+              >
                 <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-                {isSyncing ? t.forceSyncingNow : t.forceSyncNow}
+                {t.sync}
               </Button>
               <Button
                 className="h-11 w-full"
@@ -595,6 +633,19 @@ function App() {
           open={Boolean(datePicker)}
         />
 
+        <SyncPanelModal
+          labels={t}
+          locale={locale}
+          onClose={() => setIsSyncPanelOpen(false)}
+          onRunSync={handleForceSyncNow}
+          open={isSyncPanelOpen}
+          isLoading={isLoading}
+          isSyncing={isSyncing}
+          lastSync={lastSync}
+          selectedSource={source}
+          syncRuns={state.syncRuns}
+        />
+
         {error ? (
           <Card className="border-destructive/50">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-destructive">
@@ -618,18 +669,16 @@ function App() {
             muted={t.paymentAllocations(formatNumber(state.summary?.payment_count ?? 0, locale))}
           />
           <MetricCard
-            title={t.lastSync}
-            value={lastSync ? translatedStatus(lastSync.status, t) ?? lastSync.status : t.noRuns}
-            icon={lastSync?.status === "success" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-            muted={formatDateTime(lastSync?.finished_at ?? lastSync?.started_at, locale, t.never)}
-            badge={lastSync?.status}
-            badgeLabel={translatedStatus(lastSync?.status, t)}
+            title={t.salesDays}
+            value={formatNumber(syncedSalesDayCount, locale)}
+            icon={<CalendarDays className="h-4 w-4" />}
+            muted={t.syncedDaysInWindow}
           />
           <MetricCard
-            title={t.window}
-            value={fromDate === toDate ? fromDate : t.range(fromDate, toDate)}
-            icon={<CalendarDays className="h-4 w-4" />}
-            muted={source === "all" ? t.allConfiguredSources : source}
+            title={t.averageDailySales}
+            value={formatCurrency(averageDailySales, currency, locale)}
+            icon={<TrendingUp className="h-4 w-4" />}
+            muted={t.acrossSyncedDays}
           />
         </section>
 
@@ -705,63 +754,33 @@ function App() {
           </CardContent>
         </Card>
 
-        <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t.paymentMix}</CardTitle>
-              <CardDescription>{state.payments.length ? t.totalsByMethod : t.noPaymentTotals}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={paymentChartData} margin={{ top: 10, right: 12, left: 0, bottom: 24 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} interval={0} angle={-20} textAnchor="end" height={60} />
-                    <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} width={70} />
-                    <Tooltip
-                      cursor={{ fill: "hsl(var(--muted))" }}
-                      contentStyle={{
-                        background: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                      }}
-                      formatter={(value) => formatCurrency(Number(value), currency, locale)}
-                    />
-                    <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t.syncStatus}</CardTitle>
-              <CardDescription>{t.mostRecentRuns}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {state.syncRuns.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{t.noSyncRuns}</p>
-                ) : (
-                  state.syncRuns.slice(0, 5).map((run) => (
-                    <div key={run.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
-                          {run.source_name} · {run.business_date}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {t.syncRows(formatNumber(run.rows_matched, locale), formatNumber(run.rows_read, locale))}
-                        </div>
-                      </div>
-                      <Badge variant={statusVariant(run.status)}>{translatedStatus(run.status, t)}</Badge>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.paymentMix}</CardTitle>
+            <CardDescription>{state.payments.length ? t.totalsByMethod : t.noPaymentTotals}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={paymentChartData} margin={{ top: 10, right: 12, left: 0, bottom: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} interval={0} angle={-20} textAnchor="end" height={60} />
+                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} width={70} />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted))" }}
+                    contentStyle={{
+                      background: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                    }}
+                    formatter={(value) => formatCurrency(Number(value), currency, locale)}
+                  />
+                  <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -870,6 +889,127 @@ function DateFieldButton({
   );
 }
 
+function SyncPanelModal({
+  labels,
+  locale,
+  onClose,
+  onRunSync,
+  open,
+  isLoading,
+  isSyncing,
+  lastSync,
+  selectedSource,
+  syncRuns,
+}: {
+  labels: Translation;
+  locale: string;
+  onClose: () => void;
+  onRunSync: () => void | Promise<void>;
+  open: boolean;
+  isLoading: boolean;
+  isSyncing: boolean;
+  lastSync: SyncRun | null;
+  selectedSource: string;
+  syncRuns: SyncRun[];
+}) {
+  const selectedSourceLabel = selectedSource === "all" ? labels.allSources : selectedSource;
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/30 p-0 sm:items-center sm:p-4" role="presentation">
+      <button className="absolute inset-0 cursor-default" type="button" aria-hidden="true" tabIndex={-1} onClick={onClose} />
+      <div
+        className="relative max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-t-lg border border-border bg-card p-4 text-card-foreground shadow-lg sm:max-w-lg sm:rounded-lg sm:p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label={labels.syncStatus}
+      >
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{labels.syncStatus}</p>
+            <h2 className="mt-1 text-lg font-semibold">{labels.sync}</h2>
+          </div>
+          <Button type="button" variant="ghost" size="icon" aria-label={labels.closeSyncPanel} onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-md border border-border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-muted-foreground">
+                  {lastSync?.status === "success" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-muted-foreground">{labels.lastSync}</p>
+                  <p className="truncate text-sm font-semibold">
+                    {lastSync ? translatedStatus(lastSync.status, labels) ?? lastSync.status : labels.noRuns}
+                  </p>
+                </div>
+              </div>
+              {lastSync?.status ? <Badge variant={statusVariant(lastSync.status)}>{translatedStatus(lastSync.status, labels)}</Badge> : null}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {formatDateTime(lastSync?.finished_at ?? lastSync?.started_at, locale, labels.never)}
+            </p>
+          </div>
+
+          <div className="rounded-md border border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">{labels.manualSync}</p>
+            <p className="mt-2 text-xs font-medium text-muted-foreground">{labels.selectedSource}</p>
+            <p className="mt-1 truncate text-sm font-semibold">{selectedSourceLabel}</p>
+            <Button className="mt-3 w-full" type="button" onClick={onRunSync} disabled={isSyncing || isLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? labels.forceSyncingNow : labels.forceSyncNow}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <h3 className="text-sm font-semibold">{labels.mostRecentRuns}</h3>
+          <div className="mt-3 space-y-2">
+            {syncRuns.length === 0 ? (
+              <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">{labels.noSyncRuns}</p>
+            ) : (
+              syncRuns.slice(0, 5).map((run) => (
+                <div key={run.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      {run.source_name} · {run.business_date}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {labels.syncRows(formatNumber(run.rows_matched, locale), formatNumber(run.rows_read, locale))}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatDateTime(run.finished_at ?? run.started_at, locale, labels.never)}
+                    </div>
+                  </div>
+                  <Badge variant={statusVariant(run.status)}>{translatedStatus(run.status, labels)}</Badge>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DatePickerModal({
   labels,
   locale,
@@ -915,7 +1055,7 @@ function DatePickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/30 p-0 sm:items-center sm:p-4" role="presentation">
-      <button className="absolute inset-0 cursor-default" type="button" aria-label={labels.closeCalendar} onClick={onClose} />
+      <button className="absolute inset-0 cursor-default" type="button" aria-hidden="true" tabIndex={-1} onClick={onClose} />
       <div
         className="relative w-full rounded-t-lg border border-border bg-card p-4 text-card-foreground shadow-lg sm:max-w-sm sm:rounded-lg"
         role="dialog"
