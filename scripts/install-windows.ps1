@@ -310,13 +310,19 @@ function Register-DashboardTask {
         -DontStopIfGoingOnBatteries `
         -ExecutionTimeLimit (New-TimeSpan -Days 0)
 
-    Register-ScheduledTask `
-        -TaskName $TaskName `
-        -Action $Action `
-        -Trigger $Trigger `
-        -Principal $Principal `
-        -Settings $Settings `
-        -Force | Out-Null
+    try {
+        Register-ScheduledTask `
+            -TaskName $TaskName `
+            -Action $Action `
+            -Trigger $Trigger `
+            -Principal $Principal `
+            -Settings $Settings `
+            -Force | Out-Null
+    }
+    catch {
+        Write-Warning "Could not register scheduled task '$TaskName': $($_.Exception.Message)"
+        Write-Warning "The dashboard is installed, but autostart was not configured. Use the manual run command below, or rerun this installer from an elevated PowerShell window."
+    }
 }
 
 Resolve-InstallDefaults
