@@ -25,6 +25,11 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$ExplicitPosSourcePath = -not [string]::IsNullOrWhiteSpace($PosSourcePath)
+$ExplicitSourceName = -not [string]::IsNullOrWhiteSpace($SourceName)
+$ExplicitOdbcDsn = -not [string]::IsNullOrWhiteSpace($OdbcDsn)
+$ExplicitOdbcConnectionString = -not [string]::IsNullOrWhiteSpace($OdbcConnectionString)
+
 function Write-Step {
     param([Parameter(Mandatory = $true)][string]$Message)
     Write-Host ""
@@ -47,6 +52,21 @@ function Invoke-Native {
     if ($LASTEXITCODE -ne 0) {
         throw "$FilePath failed with exit code $LASTEXITCODE."
     }
+}
+
+function Get-ConfigValue {
+    param(
+        [object]$Config,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+    if (-not $Config) {
+        return $null
+    }
+    $Property = $Config.PSObject.Properties[$Name]
+    if ($Property) {
+        return $Property.Value
+    }
+    return $null
 }
 
 function Set-TextFileNoBom {
@@ -341,11 +361,44 @@ function Register-DashboardTask {
 Resolve-InstallDefaults
 Assert-Command docker
 
+$InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
+$ExistingConfigPath = Join-Path $InstallDir "install-config.json"
+$ExistingConfig = $null
+if (Test-Path $ExistingConfigPath) {
+    $ExistingConfig = Get-Content -Raw -Path $ExistingConfigPath | ConvertFrom-Json
+}
+
+if ($ExistingConfig) {
+    if (-not $ExplicitPosSourcePath) {
+        $ExistingPosSourcePath = [string](Get-ConfigValue -Config $ExistingConfig -Name "posSourcePath")
+        if ($ExistingPosSourcePath) {
+            $PosSourcePath = $ExistingPosSourcePath
+        }
+    }
+    if (-not $ExplicitSourceName) {
+        $ExistingSourceName = [string](Get-ConfigValue -Config $ExistingConfig -Name "sourceName")
+        if ($ExistingSourceName) {
+            $SourceName = $ExistingSourceName
+        }
+    }
+    if (-not $ExplicitOdbcDsn) {
+        $ExistingOdbcDsn = [string](Get-ConfigValue -Config $ExistingConfig -Name "odbcDsn")
+        if ($ExistingOdbcDsn) {
+            $OdbcDsn = $ExistingOdbcDsn
+        }
+    }
+    if (-not $ExplicitOdbcConnectionString) {
+        $ExistingOdbcConnectionString = [string](Get-ConfigValue -Config $ExistingConfig -Name "odbcConnectionString")
+        if ($ExistingOdbcConnectionString) {
+            $OdbcConnectionString = $ExistingOdbcConnectionString
+        }
+    }
+}
+
 if (-not (Test-Path $PosSourcePath)) {
     throw "POS source path does not exist: $PosSourcePath"
 }
 
-$InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pos-dashboard-install-" + [Guid]::NewGuid().ToString("N"))
 $PackageZip = Join-Path $TempDir $AssetName
 $ExtractDir = Join-Path $TempDir "package"
@@ -383,13 +436,9 @@ try {
     }
 
     if (-not $PostgresPassword) {
-        $ExistingConfigPath = Join-Path $InstallDir "install-config.json"
-        if (Test-Path $ExistingConfigPath) {
-            $ExistingConfig = Get-Content -Raw -Path $ExistingConfigPath | ConvertFrom-Json
-            $PasswordProperty = $ExistingConfig.PSObject.Properties["postgresPassword"]
-            if ($PasswordProperty -and $PasswordProperty.Value) {
-                $PostgresPassword = [string]$PasswordProperty.Value
-            }
+        $ExistingPostgresPassword = [string](Get-ConfigValue -Config $ExistingConfig -Name "postgresPassword")
+        if ($ExistingPostgresPassword) {
+            $PostgresPassword = $ExistingPostgresPassword
         }
     }
     if (-not $PostgresPassword) {
