@@ -115,3 +115,28 @@ def test_unknown_payment_code_is_reported_and_still_aggregated() -> None:
     assert payment.payment_label == "Unknown 99"
     assert payment.total_amount == Decimal("3.50")
 
+
+def test_sync_all_available_aggregates_every_business_date() -> None:
+    db = make_session()
+    first_date = date(2022, 8, 6)
+    second_date = date(2022, 8, 7)
+    reader = FixtureParadoxReader(records=[
+        payment_record(first_date, "1", "10.00", receipt_key="A:1"),
+        payment_record(first_date, "2", "5.00", receipt_key="A:2"),
+        payment_record(second_date, "1", "7.50", receipt_key="B:1"),
+        payment_record(second_date, "1", "99.00", status="PENDIENTE", receipt_key="B:2"),
+    ])
+
+    runs = SyncService(reader).sync_all_available(db, make_source())
+
+    assert [run.business_date for run in runs] == [first_date, second_date]
+    assert [run.status for run in runs] == ["success", "success"]
+    summaries = {
+        row.business_date: row
+        for row in db.execute(select(DailySalesSummary)).scalars().all()
+    }
+    assert summaries[first_date].gross_amount == Decimal("15.00")
+    assert summaries[first_date].payment_count == 2
+    assert summaries[second_date].gross_amount == Decimal("7.50")
+    assert summaries[second_date].payment_count == 1
+

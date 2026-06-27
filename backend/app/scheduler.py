@@ -1,5 +1,3 @@
-from datetime import date, timedelta
-
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.core.config import settings
@@ -7,18 +5,17 @@ from app.db.session import SessionLocal
 from app.services.sync_service import SyncService
 
 
-def sync_yesterday() -> None:
-    business_date = date.today() - timedelta(days=1)
+def sync_all_available() -> None:
     service = SyncService()
     with SessionLocal() as db:
         for source in settings.pos_sources:
-            service.sync_day(db, source, business_date)
+            service.sync_all_available(db, source)
 
 
 def build_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone=settings.default_timezone)
     scheduler.add_job(
-        sync_yesterday,
+        sync_all_available,
         trigger="cron",
         hour=settings.daily_sync_hour,
         minute=settings.daily_sync_minute,

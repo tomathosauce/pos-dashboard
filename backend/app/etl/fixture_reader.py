@@ -21,9 +21,11 @@ class FixtureParadoxReader:
             raise self.fail
         return {code: PaymentMethod(code=code, label=label) for code, label in self.methods.items()}
 
-    def iter_payment_records(self, source: PosSourceConfig, business_date: date) -> list[PaymentRecord]:
+    def iter_payment_records(self, source: PosSourceConfig, business_date: date | None = None) -> list[PaymentRecord]:
         if self.fail:
             raise self.fail
+        if business_date is None:
+            return self.records
         return [record for record in self.records if record.business_date == business_date]
 
 

@@ -21,14 +21,14 @@ class PxlibParadoxReader:
         finally:
             self._close_table(table)
 
-    def iter_payment_records(self, source: PosSourceConfig, business_date: date) -> list[PaymentRecord]:
+    def iter_payment_records(self, source: PosSourceConfig, business_date: date | None = None) -> list[PaymentRecord]:
         table = self._open_table(source.resolved_path, "tdocumentos_formas.DB")
         records: list[PaymentRecord] = []
         try:
             for index in range(len(table)):
                 row = table[index]
                 row_date = coerce_date(row["FECHA"])
-                if row_date != business_date:
+                if business_date is not None and row_date != business_date:
                     continue
                 records.append(self._row_to_payment_record(row))
             return records

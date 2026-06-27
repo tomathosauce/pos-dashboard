@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -25,6 +26,6 @@ class ParadoxReader(Protocol):
     def load_payment_methods(self, source: PosSourceConfig) -> dict[str, PaymentMethod]:
         ...
 
-    def iter_payment_records(self, source: PosSourceConfig, business_date: date) -> list[PaymentRecord]:
+    def iter_payment_records(self, source: PosSourceConfig, business_date: date | None = None) -> Iterable[PaymentRecord]:
         ...
 

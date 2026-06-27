@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import PosSourceConfig
 from app.etl.reader_factory import build_reader
-from app.etl.types import ParadoxReader
+from app.etl.types import ParadoxReader, PaymentMethod, PaymentRecord
 from app.models.reporting import DailySalesSummary, PaymentMethodSummary, SyncRun
 
 PAID_STATUSES = {"PAGADO", "COBRADO"}
@@ -18,6 +19,37 @@ class SyncService:
         self.reader = reader
 
     def sync_day(self, db: Session, source: PosSourceConfig, business_date: date) -> SyncRun:
+        try:
+            reader = self.reader or build_reader(source)
+            methods = reader.load_payment_methods(source)
+            records = reader.iter_payment_records(source, business_date)
+            return self._sync_records(db, source, business_date, records, methods)
+        except Exception as exc:
+            return self._record_failed_run(db, source, business_date, exc)
+
+    def sync_all_available(self, db: Session, source: PosSourceConfig) -> list[SyncRun]:
+        try:
+            reader = self.reader or build_reader(source)
+            methods = reader.load_payment_methods(source)
+            records_by_date: dict[date, list[PaymentRecord]] = defaultdict(list)
+            for record in reader.iter_payment_records(source):
+                records_by_date[record.business_date].append(record)
+        except Exception as exc:
+            return [self._record_failed_run(db, source, date.today(), exc)]
+
+        return [
+            self._sync_records(db, source, business_date, records_by_date[business_date], methods)
+            for business_date in sorted(records_by_date)
+        ]
+
+    def _sync_records(
+        self,
+        db: Session,
+        source: PosSourceConfig,
+        business_date: date,
+        records: Iterable[PaymentRecord],
+        methods: dict[str, PaymentMethod],
+    ) -> SyncRun:
         run = SyncRun(
             source_name=source.name,
             business_date=business_date,
@@ -29,9 +61,7 @@ class SyncService:
         db.refresh(run)
 
         try:
-            reader = self.reader or build_reader(source)
-            methods = reader.load_payment_methods(source)
-            records = reader.iter_payment_records(source, business_date)
+            records = list(records)
             rows_read = len(records)
             matched_records = [record for record in records if record.status.upper() in PAID_STATUSES]
 
@@ -98,13 +128,34 @@ class SyncService:
             db.refresh(run)
             return run
         except Exception as exc:
-            db.rollback()
-            run = db.get(SyncRun, run.id)
-            if run is None:
-                raise
-            run.status = "failed"
-            run.finished_at = datetime.now(timezone.utc)
-            run.error_text = str(exc)
-            db.commit()
-            db.refresh(run)
-            return run
+            return self._mark_run_failed(db, run.id, exc)
+
+    def _record_failed_run(
+        self,
+        db: Session,
+        source: PosSourceConfig,
+        business_date: date,
+        exc: Exception,
+    ) -> SyncRun:
+        run = SyncRun(
+            source_name=source.name,
+            business_date=business_date,
+            status="running",
+            warnings=[],
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        return self._mark_run_failed(db, run.id, exc)
+
+    def _mark_run_failed(self, db: Session, run_id: int, exc: Exception) -> SyncRun:
+        db.rollback()
+        run = db.get(SyncRun, run_id)
+        if run is None:
+            raise exc
+        run.status = "failed"
+        run.finished_at = datetime.now(timezone.utc)
+        run.error_text = str(exc)
+        db.commit()
+        db.refresh(run)
+        return run

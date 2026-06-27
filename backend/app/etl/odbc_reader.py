@@ -8,6 +8,16 @@ from app.etl.value_utils import clean_code, coerce_date, coerce_decimal
 
 
 class OdbcParadoxReader:
+    def _default_connection_string(self, pyodbc: Any, source: PosSourceConfig) -> str:
+        path = str(source.resolved_path)
+        driver = "Microsoft Paradox Driver (*.db)"
+        for candidate in pyodbc.drivers():
+            normalized = candidate.lower().replace(" ", "")
+            if "paradox" in normalized and "*.db" in normalized:
+                driver = candidate
+                break
+        return f"Driver={{{driver}}};DefaultDir={path};DBQ={path};FIL=Paradox 5.X;ReadOnly=1"
+
     def _connect(self, source: PosSourceConfig):
         try:
             import pyodbc
@@ -22,11 +32,7 @@ class OdbcParadoxReader:
         elif source.odbc_dsn:
             connection_string = f"DSN={source.odbc_dsn};ReadOnly=1"
         else:
-            path = str(source.resolved_path)
-            connection_string = (
-                "Driver={Microsoft Paradox Driver (*.db)};"
-                f"DefaultDir={path};DBQ={path};FIL=Paradox 5.X;ReadOnly=1"
-            )
+            connection_string = self._default_connection_string(pyodbc, source)
 
         return pyodbc.connect(connection_string, autocommit=True, timeout=30)
 
@@ -42,15 +48,15 @@ class OdbcParadoxReader:
             methods[code] = PaymentMethod(code=code, label=label)
         return methods
 
-    def iter_payment_records(self, source: PosSourceConfig, business_date: date) -> list[PaymentRecord]:
+    def iter_payment_records(self, source: PosSourceConfig, business_date: date | None = None) -> list[PaymentRecord]:
         self._assert_table_exists(source.resolved_path, "tdocumentos_formas.DB")
-        query = """
-            SELECT SERIE, NUMERO, CODIGOFORMAPAGO, IMPORTE, FECHA, ESTADO
-            FROM tdocumentos_formas
-            WHERE FECHA >= ? AND FECHA <= ?
-        """
+        query = "SELECT SERIE, NUMERO, CODIGOFORMAPAGO, IMPORTE, FECHA, ESTADO FROM tdocumentos_formas"
+        params: tuple[date, ...] = ()
+        if business_date is not None:
+            query = f"{query} WHERE FECHA >= ? AND FECHA <= ?"
+            params = (business_date, business_date)
         with self._connect(source) as connection:
-            rows = connection.cursor().execute(query, business_date, business_date).fetchall()
+            rows = connection.cursor().execute(query, *params).fetchall()
 
         return [self._row_to_payment_record(row) for row in rows]
 

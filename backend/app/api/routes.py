@@ -76,10 +76,16 @@ def sync_runs(limit: int = Query(default=50, ge=1, le=200), db: Session = Depend
 
 @router.post("/sync/run", response_model=list[SyncRunOut])
 def run_sync(
-    business_date: date = Query(alias="date"),
+    business_date: date | None = Query(default=None, alias="date"),
     source: str = "all",
     db: Session = Depends(get_db),
 ) -> list[SyncRun]:
     service = SyncService()
     sources = settings.pos_sources if source == "all" else [settings.get_source(source)]
-    return [service.sync_day(db, source_config, business_date) for source_config in sources]
+    if business_date is not None:
+        return [service.sync_day(db, source_config, business_date) for source_config in sources]
+
+    runs: list[SyncRun] = []
+    for source_config in sources:
+        runs.extend(service.sync_all_available(db, source_config))
+    return runs
